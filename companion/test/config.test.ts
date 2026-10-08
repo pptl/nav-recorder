@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_CONFIG, validateConfig, withDefaults } from "../src/config.js";
+import { DEFAULT_CONFIG, validateConfig, validateLaunch, withDefaults } from "../src/config.js";
 import { examplesDir } from "../src/paths.js";
 import { readJson } from "../src/util/fs.js";
 import type { NavConfig } from "../src/types.js";
@@ -44,6 +44,27 @@ test("navigation.entry defaults to unknown and only accepts the three verbs", ()
   assert.equal(withDefaults({ navigation: { entry: "menu", evidence: "why" } }).navigation.evidence, "why");
   assert.deepEqual(validateConfig(withDefaults({ navigation: { entry: "menu" } })), []);
   assert.ok(validateConfig(withDefaults({ navigation: { entry: "spa" } as never })).some((e) => e.includes("navigation.entry")));
+});
+
+test("launch defaults to empty and is validated only when present", () => {
+  // Same reasoning as navigation.entry: an unanswered project must not read as "any script will do".
+  assert.deepEqual(withDefaults({}).launch, {});
+  assert.deepEqual(validateConfig(withDefaults({})), []);
+  assert.deepEqual(validateLaunch(undefined), []);
+
+  const ok = { command: "npm start", cwd: "web", requiredEnv: { APP_MODE: "development" }, readyWhen: "compiled", readyTimeoutSec: 120, avoid: [{ command: "npm run start:plain", reason: "omits APP_MODE" }], evidence: "ran both" };
+  assert.deepEqual(validateConfig(withDefaults({ launch: ok })), []);
+  assert.equal(withDefaults({ launch: ok }).launch.command, "npm start");
+
+  assert.ok(validateLaunch({ command: "" }).some((e) => e.includes("launch.command")));
+  assert.ok(validateLaunch({ cwd: "C:/app" }).some((e) => e.includes("relative")));
+  assert.ok(validateLaunch({ cwd: "/app" }).some((e) => e.includes("relative")));
+  assert.ok(validateLaunch({ readyTimeoutSec: 0 }).some((e) => e.includes("readyTimeoutSec")));
+  assert.ok(validateLaunch({ avoid: [{ command: "x", reason: "" }] }).some((e) => e.includes("reason is required")));
+  assert.ok(validateLaunch({ requiredEnv: { "1BAD": "x" } }).some((e) => e.includes("valid variable name")));
+  // withDefaults spreads whatever it is handed, so a bare string arrives as numeric keys.
+  assert.ok(validateConfig(withDefaults({ launch: "npm start" as never })).some((e) => e.includes("unknown key")));
+  assert.ok(validateLaunch({ cmd: "npm start" } as never).some((e) => e.includes('unknown key "cmd"')));
 });
 
 test("derived apiBases are looked up from a JSON file, optionally via a regex capture in a source file", async () => {

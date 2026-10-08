@@ -28,7 +28,10 @@ export function exportTemplate(dataDir: string, cfg: NavConfig, actors: ActorsFi
 
   const schemaRel = relative(dir, join(repoRoot(), "schemas", "config.schema.json")).replace(/\\/g, "/");
   const cfgFile = join(dir, "config.json");
-  writeJsonAtomic(cfgFile, { $schema: schemaRel, ...configForDisk(cfg) });
+  // `launch` is per-repository, not a property of the stack: inheriting another project's start
+  // command is the same mistake as guessing one, except it also looks authoritative.
+  const { launch: _launch, ...forDisk } = configForDisk(cfg);
+  writeJsonAtomic(cfgFile, { $schema: schemaRel, ...forDisk });
   files.push(cfgFile);
 
   const scrubbed: ActorsFile = { actors: {} };

@@ -90,7 +90,7 @@ export const doctorCommand: CommandDef = {
         const report = portsReport(dataDir);
         add("ports serving this project", report.mine.length > 0, report.mine.length
           ? `${report.mine.join(", ")} — recordings from these ports land here`
-          : `none — ${noEventsHint(report)}`);
+          : `none — ${noEventsHint(report, cfg.launch)}`);
         if (report.unrouted.length) {
           add("staged recordings", false, `${report.unrouted.map((u) => `port ${u.port}: ${u.events} event(s), last ${u.lastAt}`).join("; ")} — \`nav-recorder activate --port <n> --adopt\` takes them into a project, otherwise they age out`);
         }
@@ -99,6 +99,14 @@ export const doctorCommand: CommandDef = {
         add("navigation entry", entry !== "unknown", entry === "unknown"
           ? 'unknown — no route inherits an answer. Log in, browser_navigate straight to one non-landing route in a fresh session, and record whether it renders: `nav-recorder init answer navigation --value \'{"entry":"deeplink"|"menu","evidence":"..."}\' --source verified --force` then `init finalize --force`'
           : `${entry}${cfg.navigation.evidence ? ` — ${cfg.navigation.evidence}` : ""}`);
+        // Without this, "start the dev server" is advice nobody can act on, and the most
+        // plausible-looking script wins — which is how an app comes up misconfigured.
+        const launch = cfg.launch ?? {};
+        const avoid = launch.avoid?.length ? `; do not use ${launch.avoid.map((t) => `${t.command} (${t.reason})`).join("; ")}` : "";
+        const env = launch.requiredEnv && Object.keys(launch.requiredEnv).length ? ` with ${Object.entries(launch.requiredEnv).map(([k, v]) => `${k}=${v}`).join(", ")}` : "";
+        add("launch command", !!launch.command, launch.command
+          ? `${launch.command}${launch.cwd && launch.cwd !== "." ? ` (in ${launch.cwd})` : ""}${env}${avoid}`
+          : `not recorded — nothing tells the Agent how to bring this project up, so it will guess from the project's scripts and may pick one that starts the app with an incomplete environment. \`nav-recorder init answer launch --value '{"command":"<start command>","requiredEnv":{},"avoid":[{"command":"<look-alike>","reason":"<what it omits>"}],"evidence":"..."}' --source user --force\` then \`init finalize --force\``);
       } catch (e) {
         add("config", false, `${(e as CliError).message} ${JSON.stringify((e as CliError).details ?? "")}`);
       }

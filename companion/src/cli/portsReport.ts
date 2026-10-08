@@ -1,5 +1,6 @@
 // "Where are my recordings going?" — one answer, shared by `ports`, `activate` and the E_NO_EVENTS hint.
 
+import type { LaunchConfig } from "../types.js";
 import { loadHosts } from "../hosts.js";
 import { samePath } from "../paths.js";
 import { portOverview, type ResolveDeps } from "../util/ports.js";
@@ -51,8 +52,17 @@ export function portsReport(dataDir?: string, deps: ResolveDeps = {}): PortsRepo
   };
 }
 
+/** "start the dev server" is only actionable if it names the command — config.launch holds it. */
+export function startCommandHint(launch?: LaunchConfig): string {
+  if (!launch?.command) return "";
+  const where = launch.cwd && launch.cwd !== "." ? ` in ${launch.cwd}` : "";
+  const avoid = launch.avoid?.length ? ` Do not use ${launch.avoid.map((t) => `\`${t.command}\` (${t.reason})`).join("; ")}.` : "";
+  return ` Start it with \`${launch.command}\`${where}.${avoid}`;
+}
+
 /** The sentence to show when a project expected recordings and found none. */
-export function noEventsHint(report: PortsReport): string {
+export function noEventsHint(report: PortsReport, launch?: LaunchConfig): string {
+  const start = startCommandHint(launch);
   if (report.unrouted.length) {
     const ports = report.unrouted.map((u) => `${u.port} (${u.events})`).join(", ");
     return `Staged recordings are waiting for a project: port ${ports}. If the dev server on that port is this project, run \`nav-recorder activate --port <n> --adopt\` to take them.`;
@@ -61,7 +71,7 @@ export function noEventsHint(report: PortsReport): string {
     return `This project is serving port ${report.mine.join(", ")} and recording is routed there, so nothing was recorded — browse the app in Chrome (only the active tab is recorded), then try again.`;
   }
   const seen = [...report.listening.map((r) => r.port), ...report.otherListening];
-  if (!seen.length) return "Nothing is listening on loopback: start the dev server, browse the app in Chrome, then try again.";
+  if (!seen.length) return `Nothing is listening on loopback: start the dev server, browse the app in Chrome, then try again.${start}`;
   const sample = seen.slice(0, 8).join(", ") + (seen.length > 8 ? `, … (${seen.length} in total, see \`nav-recorder ports\`)` : "");
-  return `No listening port resolves to this project (seen: ${sample}). Start this project's dev server, or run \`nav-recorder activate --port <n>\` if its command line does not name the project.`;
+  return `No listening port resolves to this project (seen: ${sample}). Start this project's dev server, or run \`nav-recorder activate --port <n>\` if its command line does not name the project.${start}`;
 }

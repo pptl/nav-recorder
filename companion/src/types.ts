@@ -163,6 +163,42 @@ export interface NavigationConfig {
 }
 
 /**
+ * A command that looks like the way to start the project but is not, and why. Recorded because the
+ * near-miss is the part that gets repeated: a sibling script with a plausible name that omits an
+ * environment variable starts a server that serves the wrong configuration without ever failing.
+ */
+export interface LaunchTrap {
+  command: string;
+  /** what the command gets wrong — mandatory, a bare blacklist stops being trusted once nobody remembers the reason */
+  reason: string;
+}
+
+/**
+ * How this project's dev server is started. Nothing here is inferred: a guessed start command is
+ * exactly the failure this section exists to prevent.
+ */
+export interface LaunchConfig {
+  /** the one command that starts the dev server, run from `cwd`; absent = never established */
+  command?: string;
+  /** working directory for `command`, relative to the project root (default ".") */
+  cwd?: string;
+  /**
+   * Environment the dev server must end up running with. `command` is expected to provide these
+   * itself (a `cross-env` prefix, an .env file); they are listed so a launch can be checked instead
+   * of assumed, and so a caller that bypasses `command` knows what it has to supply.
+   */
+  requiredEnv?: Record<string, string>;
+  /** substring of the dev server's output that means it is serving */
+  readyWhen?: string;
+  /** how long to wait for `readyWhen` before treating the launch as failed (seconds) */
+  readyTimeoutSec?: number;
+  /** commands that must not be used, with the reason */
+  avoid?: LaunchTrap[];
+  /** how this was established, so it can be re-checked when the project's scripts change */
+  evidence?: string;
+}
+
+/**
  * An API base that is looked up at load time instead of hard-coded, for projects whose dev host
  * changes over time: read `path` from a JSON `file` (relative to the project), optionally deriving
  * the path itself from a regex capture in a source file, then append a suffix.
@@ -194,6 +230,8 @@ export interface NavConfig {
   dataSourceRules: DataSourceRule[];
   /** site-wide default for how screens are entered; per-route exceptions live in data-source-map */
   navigation: NavigationConfig;
+  /** how to start the dev server, and which look-alike commands must not be used */
+  launch: LaunchConfig;
   recording: { maxBodyKB: number; bufferHours: number; sessionGapMinutes: number; unclaimedKeepDays: number; unroutedKeepHours: number };
   execute: { maxConsecutiveFailures: number };
 }

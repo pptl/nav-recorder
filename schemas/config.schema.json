@@ -91,6 +91,34 @@
         "evidence": { "type": "string", "description": "Which route was tried and what happened." }
       }
     },
+    "launch": {
+      "type": "object",
+      "description": "How this project's dev server is started. Never inferred: a guessed command can bring the app up with the wrong environment, which looks like a working server.",
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string", "minLength": 1, "description": "The one command that starts the dev server, run from cwd." },
+        "cwd": { "type": "string", "minLength": 1, "pattern": "^(?![A-Za-z]:[\\\\/])(?![\\\\/]).+", "description": "Working directory for command, relative to the project root (default \".\")." },
+        "requiredEnv": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+          "description": "Environment the dev server must end up running with. command is expected to provide these itself; they are listed so a launch can be checked instead of assumed."
+        },
+        "readyWhen": { "type": "string", "minLength": 1, "description": "Substring of the dev server's output that means it is serving." },
+        "readyTimeoutSec": { "type": "number", "exclusiveMinimum": 0 },
+        "avoid": {
+          "type": "array",
+          "description": "Commands that look like the start command but are wrong.",
+          "items": {
+            "type": "object",
+            "required": ["command", "reason"],
+            "additionalProperties": false,
+            "properties": { "command": { "type": "string", "minLength": 1 }, "reason": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "evidence": { "type": "string", "description": "How this was established, so it can be re-checked when the project's scripts change." }
+      }
+    },
     "recording": { "type": "object", "properties": { "maxBodyKB": { "type": "number", "minimum": 1 }, "bufferHours": { "type": "number", "minimum": 0.1 }, "sessionGapMinutes": { "type": "number", "minimum": 0.1 }, "unclaimedKeepDays": { "type": "number", "minimum": 0.1 }, "unroutedKeepHours": { "type": "number", "minimum": 0.1, "description": "How long loopback recordings whose project could not be resolved are kept in the machine-wide staging area." } } },
     "execute": { "type": "object", "properties": { "maxConsecutiveFailures": { "type": "integer", "minimum": 1 } } }
   },

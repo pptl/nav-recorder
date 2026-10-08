@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { ApiBaseSpec, NavConfig } from "./types.js";
+import type { ApiBaseSpec, LaunchConfig, NavConfig } from "./types.js";
 import { CliError } from "./errors.js";
 import { p, projectDirOf } from "./paths.js";
 import { readJson } from "./util/fs.js";
@@ -29,6 +29,9 @@ export const DEFAULT_CONFIG: NavConfig = {
   ],
   // Never assume deep links work: an unproven guess would silently send the Agent to a blank screen.
   navigation: { entry: "unknown" },
+  // Empty for the same reason: a guessed start command can bring the app up with the wrong
+  // environment, which looks like a working server and fails much later.
+  launch: {},
   recording: { maxBodyKB: 64, bufferHours: 2, sessionGapMinutes: 20, unclaimedKeepDays: 7, unroutedKeepHours: 12 },
   execute: { maxConsecutiveFailures: 3 },
 };
@@ -51,9 +54,56 @@ export function withDefaults(partial: Partial<NavConfig>): NavConfig {
     schemaSources: partial.schemaSources ?? d.schemaSources,
     dataSourceRules: partial.dataSourceRules ?? d.dataSourceRules,
     navigation: { ...d.navigation, ...(partial.navigation ?? {}) },
+    launch: { ...d.launch, ...(partial.launch ?? {}) },
     recording: { ...d.recording, ...(partial.recording ?? {}) },
     execute: { ...d.execute, ...(partial.execute ?? {}) },
   };
+}
+
+const LAUNCH_KEYS = ["command", "cwd", "requiredEnv", "readyWhen", "readyTimeoutSec", "avoid", "evidence"] as const;
+/** Valid POSIX/Windows environment variable name. */
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * `launch` is entirely optional, so every rule here is about a value that is present being usable.
+ * The unknown-key check doubles as a shape check: withDefaults spreads whatever it is given, so a
+ * bare string arrives as an object of numeric keys rather than failing outright.
+ */
+export function validateLaunch(launch: LaunchConfig | undefined): string[] {
+  const errors: string[] = [];
+  if (launch === undefined) return errors;
+  if (typeof launch !== "object" || launch === null || Array.isArray(launch)) return ["launch must be an object"];
+  for (const k of Object.keys(launch)) {
+    if (!(LAUNCH_KEYS as readonly string[]).includes(k)) errors.push(`launch has unknown key "${k}" (allowed: ${LAUNCH_KEYS.join(", ")})`);
+  }
+  const str = (v: unknown): boolean => typeof v === "string" && v.trim().length > 0;
+  if (launch.command !== undefined && !str(launch.command)) errors.push("launch.command must be a non-empty string");
+  if (launch.cwd !== undefined) {
+    if (!str(launch.cwd)) errors.push("launch.cwd must be a non-empty string");
+    // An absolute cwd would pin the config to one machine; everything else here is portable.
+    else if (/^([A-Za-z]:[\\/]|[\\/])/.test(launch.cwd)) errors.push(`launch.cwd must be relative to the project root: ${launch.cwd}`);
+  }
+  if (launch.requiredEnv !== undefined) {
+    if (typeof launch.requiredEnv !== "object" || launch.requiredEnv === null || Array.isArray(launch.requiredEnv)) errors.push("launch.requiredEnv must be an object of NAME → value");
+    else for (const [k, v] of Object.entries(launch.requiredEnv)) {
+      if (!ENV_NAME.test(k)) errors.push(`launch.requiredEnv key is not a valid variable name: ${k}`);
+      if (typeof v !== "string") errors.push(`launch.requiredEnv.${k} must be a string`);
+    }
+  }
+  if (launch.readyWhen !== undefined && !str(launch.readyWhen)) errors.push("launch.readyWhen must be a non-empty string");
+  if (launch.readyTimeoutSec !== undefined && !(typeof launch.readyTimeoutSec === "number" && launch.readyTimeoutSec > 0)) errors.push("launch.readyTimeoutSec must be > 0");
+  if (launch.avoid !== undefined) {
+    if (!Array.isArray(launch.avoid)) errors.push("launch.avoid must be an array of {command, reason}");
+    else for (const [i, t] of launch.avoid.entries()) {
+      if (!t || typeof t !== "object") { errors.push(`launch.avoid[${i}] must be {command, reason}`); continue; }
+      if (!str(t.command)) errors.push(`launch.avoid[${i}].command is required`);
+      // Without a reason the entry is folklore: the next person deletes it or works around it.
+      if (!str(t.reason)) errors.push(`launch.avoid[${i}].reason is required — say what the command gets wrong`);
+      if (str(t.command) && str(launch.command) && t.command.trim() === launch.command!.trim()) errors.push(`launch.avoid[${i}].command is also launch.command: ${t.command}`);
+    }
+  }
+  if (launch.evidence !== undefined && typeof launch.evidence !== "string") errors.push("launch.evidence must be a string");
+  return errors;
 }
 
 export function validateConfig(cfg: NavConfig): string[] {
@@ -101,6 +151,7 @@ export function validateConfig(cfg: NavConfig): string[] {
   }
   if (!["deeplink", "menu", "unknown"].includes(cfg.navigation?.entry)) errors.push(`navigation.entry must be deeplink | menu | unknown (got ${String(cfg.navigation?.entry)})`);
   if (cfg.navigation?.evidence !== undefined && typeof cfg.navigation.evidence !== "string") errors.push("navigation.evidence must be a string");
+  errors.push(...validateLaunch(cfg.launch));
   if (!(cfg.recording?.maxBodyKB > 0)) errors.push("recording.maxBodyKB must be > 0");
   if (!(cfg.recording?.bufferHours > 0)) errors.push("recording.bufferHours must be > 0");
   if (!(cfg.recording?.sessionGapMinutes > 0)) errors.push("recording.sessionGapMinutes must be > 0");

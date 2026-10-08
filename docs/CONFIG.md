@@ -22,6 +22,14 @@ Companion 與 extension 本身不含任何專案特定邏輯；每個專案的�
 | `dataSourceRules` | `[{pattern, verdict?, requiresAlso?, verdictIfMissing?, note?}]` | `data-source scan` 用的 regex 規則，對元件原始碼做機械判斷：`pattern` 命中且無 `requiresAlso` → `verdict`；`pattern` 命中但 `requiresAlso` 沒命中 → `verdictIfMissing`。任何一條給 `ui` 就整體判 `ui`。 |
 | `navigation.entry` | `deeplink` / `menu` / `unknown` | **全站預設的畫面進入方式**，`data-source-map` 沒記載的 route 一律套用它。`deeplink`：直接 navigate 到網址就能正確渲染。`menu`：外殼（側欄、主內容區）的渲染依賴瀏覽過程留下的前端狀態，冷啟動用網址進去會空白，必須走應用程式自己的選單。`unknown`（預設）：從未確認過——寧可讓 agent 當場觀察，也不要預設「深連結沒問題」而靜默把它送到空白畫面。這是**行為**不是架構：是不是單頁應用不決定答案，同一個站也可能兩種混合，所以個別 route 用 `data-source-map` 覆寫。`doctor` 會檢查它不是 `unknown`。 |
 | `navigation.evidence` | string | 怎麼得到上面那個結論的：試了哪條路徑、看到什麼。日後要重新確認時的依據。 |
+| `launch` | object | **這個專案怎麼啟動開發站。** 全部選填，但 onboarding 把它列為必答，而且**不從腳本清單自己挑**：啟動指令猜錯通常不會失敗，而是把站台用錯的環境帶起來，看起來一切正常，問題延後很久才以「資料怪怪的」「打到錯的後端」的形式出現。`doctor` 會檢查 `command` 有沒有填。匯出範本（`examples/<name>/`）時整個 `launch` 會被拿掉，範本也不會把它帶進新專案：啟動指令是單一 repo 的事實，不是技術棧的慣例，繼承過來只是多一個看起來很權威的錯答案。 |
+| `launch.command` | string | 唯一那個啟動指令，從 `cwd` 執行。沒填代表從未確認過。 |
+| `launch.cwd` | string | 執行 `command` 的目錄，**相對於專案根目錄**（預設 `.`）。寫絕對路徑會被拒絕——其他欄位都是可攜的，不該有一個把設定綁在單一台機器上。 |
+| `launch.requiredEnv` | `{NAME: value}` | 開發站**最終必須帶著跑**的環境變數。即使 `command` 自己就會帶（`cross-env` 前綴、`.env` 檔）也要列出來：列了才能在啟動後**檢查**而不是假設，而且繞過 `command` 的呼叫方才知道自己得補什麼。 |
+| `launch.readyWhen` | string | 輸出裡代表「已經在服務中」的那段字，用來判斷啟動完成而不是靠等。 |
+| `launch.readyTimeoutSec` | number | 等 `readyWhen` 多久算啟動失敗。 |
+| `launch.avoid` | `[{command, reason}]` | **名字很像、但不該用的指令**，`reason` 必填。這是這整個欄位最關鍵的部分：同一組腳本裡常常只有一個帶齊環境變數，其他的看起來只差一個協定或埠號，實際上少帶了模式變數——而少帶不會報錯。`reason` 強制必填是因為沒有理由的黑名單撐不過三個月，下一個人會把它刪掉或繞過去。`avoid` 的指令不得與 `command` 相同。 |
+| `launch.evidence` | string | 怎麼確認的（實際跑過哪幾個、差異在哪）。專案的腳本改動後要重新確認時的依據。 |
 | `recording.maxBodyKB` | number | 紀錄用途（extension 目前固定 64 KB 截斷）。落盤時 512 字元以上的 response body 以 sha1 去重，同一天只在同名 `.bodies.ndjson` 存一份，事件行改帶 `responseBodyRef`；每次呼叫仍各佔一行。 |
 | `recording.bufferHours` | number | 滾動緩衝保留時數（預設 2）。以整天為單位刪檔：某天的檔案（連同 `.bodies.ndjson`）要等「隔天 + bufferHours」過了、**而且檔內每筆事件都已被認領或 discard** 才會刪。清理在 extension 重新連上 host 時，以及 `capture-recent` / `discard` / `routes recent` 執行後觸發。 |
 | `recording.unclaimedKeepDays` | number | 沒被認領的日檔最多保留幾天（預設 7，從該日結束起算）。避免 agent 從沒認領時 raw 無限累積，也不會隔天就刪掉還沒被認領的錄製。 |
@@ -62,6 +70,7 @@ Companion 與 extension 本身不含任何專案特定邏輯；每個專案的�
 | `schemaSources` | 否（自動掃描） | swagger / openapi JSON、`Migrations/*.cs` | — | — |
 | `dataSourceRules` | 是（套件預填非空時已算回答） | `package.json` deps 預填只是起點；開一個列表頁與一個明細頁元件，寫出「掛載時抓資料」→ api 與「依賴上一頁狀態」→ ui 兩類規則 | — | 頁面掛載時怎麼抓資料？明細頁 id 從網址還是上一頁狀態來？ |
 | `navigation` | 是 | **不從程式碼推**——這是行為不是架構 | 登入後在乾淨 session 直接 `browser_navigate` 到一條非落地頁的 route，`browser_snapshot` 看主內容區有沒有渲染、側欄停在哪；答案用 `--source verified` | 直接在網址列輸入功能頁路徑會正常顯示嗎，還是一定要從選單點進去？ |
+| `launch` | 是 | 專案的腳本清單（`package.json` scripts、Makefile、docker-compose、啟動設定檔）。把所有「會起開發站」的候選**逐字比對**，重點看環境變數前綴（`cross-env` / `set` / `export` / `.env`）的差異；差異就是答案 | 照 `command` 起來、等 `readyWhen`、`nav-recorder ports` 確認有埠解析到本專案、再 `browser_navigate` 確認載得起來 | 你平常實際打哪一個指令？有沒有名字很像但不該用的？ |
 | `actors` | 是 | **不從程式碼或其他 repo 推論** | — | 需要哪些角色、各自的測試帳號？密碼由使用者填檔 |
 | `smoke.landingPath` | 是 | 登入後導向、預設路由、選單第一項 | 登入後 `browser_navigate` | 登入後停在哪個穩定頁面？ |
 | `smoke.verify` | 是 | 落地頁元件的標題或主表格 | `browser_snapshot` | 該頁固定會出現的文字或元素？ |

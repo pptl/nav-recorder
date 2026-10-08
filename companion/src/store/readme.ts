@@ -10,10 +10,29 @@ export function renderReadme(cfg: NavConfig, dataDir: string): string {
     ? recipes.map((r) => `- **${r.name}** [${r.shape}] — ${r.description ?? "(no description)"}\n  - target: \`${r.targetUrl ?? "?"}\` → finalNavigation: \`${r.finalNavigation}\` (${r.steps} steps, ${r.createdAt || "?"})`).join("\n")
     : "_(none yet — run `nav-recorder capture-recent \"<desc>\" --target-url <path>` at the start of a task)_";
 
+  const launch = cfg.launch ?? {};
+  const launchLines = launch.command
+    ? [
+        `Start this project with **\`${launch.command}\`**${launch.cwd && launch.cwd !== "." ? ` from \`${launch.cwd}\`` : ""}.`,
+        launch.requiredEnv && Object.keys(launch.requiredEnv).length
+          ? `It must run with ${Object.entries(launch.requiredEnv).map(([k, v]) => `\`${k}=${v}\``).join(", ")} — the command above provides this; anything else has to supply it.`
+          : "",
+        launch.readyWhen ? `It is serving once the output contains \`${launch.readyWhen}\`.` : "",
+        launch.avoid?.length
+          ? `**Do not use** ${launch.avoid.map((t) => `\`${t.command}\` (${t.reason})`).join("; ")}`
+          : "",
+        launch.evidence ? `_${launch.evidence}_` : "",
+      ].filter(Boolean).join("\n")
+    : "_(not established — answer the `launch` field: `nav-recorder init answer launch --value '{\"command\":\"...\"}' --source user`)_";
+
   return `# .nav-recorder — ${cfg.name}
 
 This directory is local-only (git-ignored). It is read and written by the \`nav-recorder\` Companion.
 Agent dev: follow the \`nav-recorder\` Skill; this file only tells you what exists here.
+
+## Starting the app
+
+${launchLines}
 
 ## Preconditions (recipes)
 

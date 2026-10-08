@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
-import type { ActorsFile, NavConfig, NavigationConfig } from "../types.js";
+import type { ActorsFile, LaunchConfig, NavConfig, NavigationConfig } from "../types.js";
 import { CliError } from "../errors.js";
 import { p } from "../paths.js";
 import { resolveConfig, type RawConfig } from "../config.js";
@@ -144,6 +144,18 @@ export function computeWarnings(state: OnboardingState): string[] {
   if (navi && navi.status !== "missing" && navi.source === "code") {
     warnings.push("navigation.entry was answered from code. Whether a URL alone renders a screen is a runtime behaviour: verify it in the browser (--source verified) or ask the user (--source user).");
   }
+  const launch = state.fields.launch;
+  if (launch && launch.status !== "missing") {
+    const value = (launch.value as LaunchConfig | undefined) ?? {};
+    // Picking the most plausible-looking script is how the wrong one gets chosen: a sibling that
+    // omits a mode variable still starts a server, so reading the scripts cannot settle it alone.
+    if (launch.source === "code") {
+      warnings.push("launch was answered from code alone. A sibling script with a plausible name can start the app with an incomplete environment and never fail: run it and check it (--source verified), or ask the user which command they actually use (--source user).");
+    }
+    if (!value.avoid?.length) {
+      warnings.push("launch.avoid is empty: no look-alike command is recorded as wrong. If the project has other scripts that also start a server, list each one with the reason it must not be used — that is the part that otherwise gets repeated.");
+    }
+  }
   return warnings;
 }
 
@@ -258,6 +270,9 @@ export function answersFromTemplate(state: OnboardingState, templateDir: string)
   delete raw.$schema;
   for (const def of CATALOGUE) {
     if (!def.configPath) continue;
+    // How to start the app is a fact about this repository. A template must leave it unanswered so
+    // it gets established here, rather than arrive pre-filled with another project's command.
+    if (def.key === "launch") continue;
     const value = def.configPath.split(".").reduce<unknown>((acc, s) => (acc && typeof acc === "object" ? (acc as Record<string, unknown>)[s] : undefined), raw);
     if (value !== undefined) setAnswer(state, def.key, value, "template", `template ${basename(templateDir)}/config.json`);
   }

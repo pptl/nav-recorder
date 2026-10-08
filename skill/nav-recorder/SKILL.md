@@ -11,6 +11,7 @@ description: 開發網頁專案時，凡是收到「開始改動 XX 功能」「
 
 - 專案根目錄有 `.nav-recorder/`（含 `config.json`、`actors.json`、`README.md`）。沒有就先做步驟 0。
 - `.nav-recorder/` 是這個專案**累積下來的知識庫**，不是一次性的設定檔：`README.md`（有哪些 recipe、各自是什麼 shape）、`route-catalogue.md`（使用者口中的畫面叫什麼、對應哪條 path、掛在哪個選單分頁底下）、`data-source-map.md`（畫面怎麼進去：`config.navigation` 是全站預設，表上的每一列是它的例外或個別驗證過的結果）、`param-constraints.md`（哪些參數有唯一性限制）。前一個 agent 踩過的坑都寫在這裡。**每次任務開始都要查**（步驟 1），不是 onboarding 讀過一次就算。
+- **要自己啟動開發站時，啟動指令一律從 `config.launch` 讀**（`README.md` 開頭的「Starting the app」段就是它，`nav-recorder doctor` 的 `launch command` 項也會印）：`command` 是唯一該用的指令，`avoid` 列出名字很像但少帶環境變數的那些。**不要自己翻 `package.json` 的 scripts 挑一個**——挑錯不會報錯，只會讓站台帶著錯的環境跑起來。`config.launch` 沒填就先問使用者，然後把答案寫回去（`init answer launch`），不要默默猜一個。
 - 所有 `nav-recorder` 命令要在專案目錄內執行，或加 `--project <專案根目錄>`。
 - 每個命令的 stdout 是**單行 JSON**；錯誤在 stderr 也是 JSON（`{error, code, details}`）且 exit code 1。加 `--pretty` 可換行輸出方便閱讀。
 - Windows PowerShell 傳 JSON 參數容易被引號吃掉：大的 JSON（response、storage snapshot）一律先寫到 scratchpad 檔案，再用 `--response @<路徑>`、`--storage-snapshot @<路徑>` 傳入。
@@ -42,7 +43,8 @@ description: 開發網頁專案時，凡是收到「開始改動 XX 功能」「
    nav-recorder init answer <field> --value '<json 或字串>' --source code --evidence "<檔案:行 或 依據>"
    ```
    值是 JSON 時用單引號包住整段（PowerShell 下建議寫進檔案再 `--value-file <path>`）。多個欄位可寫成一個 JSON（`{"<field>": {"value": …, "source": "…", "evidence": "…"}}`）用 `init answer --from-file <path>` 一次填。
-   四個最容易答錯的欄位，各有一道檢查，**不要略過**：
+   五個最容易答錯的欄位，各有一道檢查，**不要略過**：
+   - `launch`：**不要從腳本清單挑名字看起來最像的那一個。** 啟動指令猜錯通常不會失敗，而是把站台用錯的環境帶起來，看起來一切正常。做法：把專案所有「會起開發站」的候選指令列出來（`package.json` scripts、Makefile、docker-compose、啟動設定檔），**逐字比對它們之間的差異**，特別是環境變數前綴（`cross-env` / `set` / `export` / `.env`）。常見情形是一組腳本只有其中一個帶齊環境變數，其他的看起來只差一個協定或埠號，實際上少帶了模式變數。選定的填 `command`，必須帶的環境變數填 `requiredEnv`（即使 `command` 自己會帶也要列，才能啟動後檢查），每個「看起來也能啟動但少帶東西」的候選填進 `avoid` 並寫明 `reason`。答成 `code` 或 `avoid` 留空都會出 warning——比對完要麼真的跑一次（`--source verified`），要麼直接問使用者平常打哪一個（`--source user`）。
    - `navigation`：**唯一一個不准從程式碼推的欄位**。它問的是「直接用網址進得去嗎」，那是行為，不是架構——是不是單頁應用不決定答案。做法：登入後在同一個乾淨 session 直接 `browser_navigate` 到一條**不是登入落地頁**的功能頁路徑（從使用者提到的畫面挑一條），`browser_snapshot` 看主內容區有沒有真的渲染、側欄有沒有停在對的分類。正常 → `{"entry":"deeplink"}`；空白或選單停在別的分類 → `{"entry":"menu"}`。一律 `--source verified`（真的沒帳號才 `--source user` 問使用者）。答成 `code` 或留在 `unknown` 都會出 warning，`doctor` 也會紅。
    - `apiBases`：回答後看輸出的 `resolvedPreview`。它必須是「主機 + 路徑前綴」（例如 `https://host/app-name/`）；若只是 `https://host/`，代表 `append` 漏了前綴，去組 URL 的函式或設定檔把前綴找出來重答。`warnings` 會標出 bare origin。
    - `readOnlyPatterns`：先跑 `nav-recorder init suggest-readonly --files "<service/adapter 層 glob>" --pretty` 拿到結尾動詞直方圖。**每個 count ≥ 2 的動詞都要歸類**（讀取 → 放進 pattern；寫入 → 不放；`unclassified` → 開一個範例端點的呼叫處判斷），回答後 `warnings` 若列出未涵蓋的動詞就是還沒做完。回報使用者時附上你的分類表。

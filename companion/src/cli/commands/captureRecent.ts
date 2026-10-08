@@ -34,7 +34,7 @@ export const captureRecentCommand: CommandDef = {
       const recent = recentRoutes(dataDir, cfg, fromSeqRaw !== undefined ? Number(fromSeqRaw) : undefined);
       if (!recent.events) {
         const report = portsReport(dataDir);
-        throw new CliError("E_NO_EVENTS", `No recorded events after seq ${recent.fromSeq}. ${noEventsHint(report)}`, report);
+        throw new CliError("E_NO_EVENTS", `No recorded events after seq ${recent.fromSeq}. ${noEventsHint(report, cfg.launch)}`, report);
       }
       return {
         mode: "candidates",

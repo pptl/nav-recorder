@@ -157,7 +157,7 @@ nav-recorder init finalize --project <目標專案根目錄> --pretty
 nav-recorder doctor --project <目標專案根目錄> --pretty
 ```
 
-finalize 會產生 `config.json`、`actors.json`（密碼留 `CHANGE_ME`，請自行填入）與煙霧 recipe `login-ready`，並把 `.nav-recorder/` 與 `.playwright-mcp/` 加進 `.gitignore`。同一專案換一台機器時，`nav-recorder init --template <專案名> --project <dir>` 可以直接套用範本，不用重答問卷。
+finalize 會產生 `config.json`、`actors.json`（密碼留 `CHANGE_ME`，請自行填入）與煙霧 recipe `login-ready`，並把 `.nav-recorder/` 與 `.playwright-mcp/` 加進 `.gitignore`。同一專案換一台機器時，`nav-recorder init --template <專案名> --project <dir>` 可以直接套用範本，不用重答問卷（`launch` 例外：啟動指令是單一 repo 的事實，範本不帶，必須在新專案重新確認）。
 
 > 若 config 含有不想進工具 repo 的真實設定，finalize 時加 `--no-export`，就不會回寫 `examples/`。
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CATALOGUE, presetDataSourceRules, validateAnswer } from "../src/onboarding/catalogue.js";
+import { CATALOGUE, CATALOGUE_BY_KEY, presetDataSourceRules, validateAnswer } from "../src/onboarding/catalogue.js";
 import { answersFromTemplate, computeWarnings, requireComplete, setAnswer, smokeAnswers, startOnboarding, statusReport, toActors, toConfig } from "../src/onboarding/state.js";
 import { buildSmokeRecipe } from "../src/onboarding/smokeRecipe.js";
 import { exportTemplate } from "../src/onboarding/exportTemplate.js";
@@ -30,6 +30,7 @@ function answerRequired(state: ReturnType<typeof startOnboarding>): void {
   setAnswer(state, "auth", { kind: "bearer", header: "Authorization", tokenSource: { area: "localStorage", key: "access_token" } }, "code", "src/http.ts");
   setAnswer(state, "login", { kind: "ui", url: "/login", fields: { username: "#user", password: "#pass" }, submit: "button[type=submit]", successCheck: { urlNot: "/login" }, call: { method: "POST", url: "auth/login" } }, "verified", "snapshot of /login");
   setAnswer(state, "navigation", { entry: "deeplink", evidence: "navigated straight to /orders in a fresh session; the table rendered" }, "verified", "browser_snapshot");
+  setAnswer(state, "launch", { command: "npm run dev", requiredEnv: { APP_MODE: "development" }, readyWhen: "ready in", avoid: [{ command: "npm run dev:plain", reason: "does not set APP_MODE, so the app comes up against the wrong backend" }], evidence: "ran it and the app answered on the port" }, "verified", "started it and checked ports");
   setAnswer(state, "actors", [{ role: "employee", username: "emp01" }, { role: "manager", username: "mgr01", note: "approver" }], "user", "asked");
   setAnswer(state, "smoke.landingPath", "/orders", "user", "asked");
   setAnswer(state, "smoke.verify", { text: "Orders" }, "verified", "snapshot");
@@ -40,7 +41,7 @@ test("startOnboarding prefills only mechanical facts and lists every required fi
   const state = startOnboarding(projectDir);
   const report = statusReport(state);
   assert.equal(report.complete, false);
-  assert.deepEqual(report.missingRequired.map((m) => m.key), ["appOrigins", "apiBases", "auth", "login", "navigation", "actors", "smoke.landingPath", "smoke.verify"]);
+  assert.deepEqual(report.missingRequired.map((m) => m.key), ["appOrigins", "apiBases", "auth", "login", "navigation", "launch", "actors", "smoke.landingPath", "smoke.verify"]);
   for (const m of report.missingRequired) { assert.ok(m.hint.length > 10, m.key); assert.ok(m.question, m.key); }
   assert.equal(state.fields.dataSourceRules.status, "inferred");
   assert.ok((state.fields.dataSourceRules.value as unknown[]).length >= 2, "query + redux presets");
@@ -80,6 +81,27 @@ test("validateAnswer rejects bad values field by field", () => {
   assert.ok(validateAnswer("smoke.verify", {}).length > 0);
   assert.deepEqual(validateAnswer("smoke.verify", "table"), []);
   assert.ok(validateAnswer("nope", 1)[0].includes("Unknown field"));
+});
+
+test("launch is required, never guessed, and every avoided command carries its reason", () => {
+  const { projectDir } = project();
+  const state = startOnboarding(projectDir);
+  assert.equal(state.fields.launch.status, "missing", "it cannot be prefilled from package.json scripts");
+  assert.equal(CATALOGUE_BY_KEY.launch.required, true);
+
+  assert.ok(validateAnswer("launch", "npm start").length > 0, "a bare string is not an answer");
+  assert.ok(validateAnswer("launch", {}).some((e) => e.includes("launch.command is required")));
+  assert.ok(validateAnswer("launch", { command: "npm start", avoid: [{ command: "npm run start:plain" }] }).some((e) => e.includes("reason is required")));
+  assert.ok(validateAnswer("launch", { command: "npm start", avoid: [{ command: "npm start", reason: "x" }] }).some((e) => e.includes("also launch.command")));
+  assert.ok(validateAnswer("launch", { command: "npm start", requiredEnv: { "not a name": "x" } }).some((e) => e.includes("not a valid variable name")));
+  assert.ok(validateAnswer("launch", { command: "npm start", cwd: "/srv/app" }).some((e) => e.includes("relative to the project root")));
+  assert.deepEqual(validateAnswer("launch", { command: "npm start", cwd: "web", requiredEnv: { APP_MODE: "development" }, readyWhen: "compiled", avoid: [{ command: "npm run start:plain", reason: "omits APP_MODE" }] }), []);
+
+  // Reading the scripts is how the wrong one gets picked, so a code-sourced answer is flagged.
+  setAnswer(state, "launch", { command: "npm start" }, "code", "package.json scripts");
+  const warnings = computeWarnings(state);
+  assert.ok(warnings.some((w) => w.includes("launch was answered from code alone")));
+  assert.ok(warnings.some((w) => w.includes("launch.avoid is empty")));
 });
 
 test("finalize is blocked with the list of questions until required fields are answered", () => {
@@ -145,6 +167,9 @@ test("exportTemplate scrubs passwords and the exported template re-onboards anot
     const { copiedRecipes } = answersFromTemplate(s2, res.templateDir);
     assert.equal(copiedRecipes.length, 1);
     assert.equal(s2.fields.appOrigins.source, "template");
+    assert.equal(s2.fields.launch.status, "missing", "a start command is per-repository and must not be inherited from a template");
+    assert.ok(!("launch" in JSON.parse(readFileSync(join(res.templateDir, "config.json"), "utf8"))), "and it is not written into the template either");
+    setAnswer(s2, "launch", { command: "npm run dev" }, "user", "asked");
     assert.equal(s2.fields.actors.status, "confirmed");
     assert.equal(smokeAnswers(s2), null, "smoke answers are not part of a template; the recipe is copied instead");
     assert.deepEqual(validateConfig(toConfig(s2)), []);

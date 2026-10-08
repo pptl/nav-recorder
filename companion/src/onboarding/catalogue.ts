@@ -1,5 +1,5 @@
-import type { NavConfig } from "../types.js";
-import { validateConfig, withDefaults } from "../config.js";
+import type { LaunchConfig, NavConfig } from "../types.js";
+import { validateConfig, validateLaunch, withDefaults } from "../config.js";
 import { validateApiBaseSpec } from "../derive.js";
 
 /**
@@ -150,6 +150,21 @@ export const CATALOGUE: FieldDef[] = [
     validate: (v) => {
       if (!v || typeof v !== "object" || Array.isArray(v)) return ['navigation must be an object: {"entry":"deeplink"|"menu","evidence":"<what you tried and saw>"}'];
       return viaConfig("navigation")(v);
+    },
+  },
+  {
+    key: "launch",
+    required: true,
+    configPath: "launch",
+    hint: "這個專案怎麼啟動開發站，值為 {command, cwd?, requiredEnv?, readyWhen?, readyTimeoutSec?, avoid?, evidence}。**不要猜，也不要挑名字看起來最像的那一個**——啟動指令猜錯通常不會報錯，而是把站台用錯的環境帶起來，看起來一切正常，問題延後很久才出現。做法：打開專案的腳本清單（package.json 的 scripts、Makefile、docker-compose、啟動設定檔），把所有「會起開發站」的候選指令列出來並**逐字比對它們之間的差異**，特別是環境變數前綴（cross-env / set / export / env 檔）。差異是重點：一組腳本常常只有其中一個帶齊環境變數，其他的看起來只差一個協定或埠號，實際上少帶了模式變數。選定那一個填 command，把它必須帶的環境變數填進 requiredEnv（例如 {\"APP_ENV\": \"development\"}，即使 command 自己會帶也要列出來，才能在啟動後檢查而不是假設），把每個「看起來也能啟動但少帶東西」的候選填進 avoid，每筆都要寫 reason 說明它少了什麼。readyWhen 填輸出裡代表「已在服務中」的那段字。無法從腳本差異確定時問使用者平常實際打哪一個指令。",
+    verify: "照 command 啟動，等到 readyWhen 出現，再用 nav-recorder ports 確認有埠解析到這個專案，然後 browser_navigate 打開它確認畫面載得起來；結論用 --source verified 回答。",
+    question: "你平常用哪一個指令啟動這個專案的開發站？有沒有哪個名字很像、但其實不該用的指令（少帶環境變數之類）？",
+    validate: (v) => {
+      if (!v || typeof v !== "object" || Array.isArray(v)) return ['launch must be an object: {"command":"<start command>","requiredEnv":{},"avoid":[],"evidence":"<how this was established>"}'];
+      const errors = validateLaunch(v as LaunchConfig);
+      // The whole point of the field is the command; an object without one answers nothing.
+      if (!(v as LaunchConfig).command) errors.push("launch.command is required");
+      return errors;
     },
   },
   {

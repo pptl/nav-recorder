@@ -35,7 +35,7 @@ export const routesCommand: CommandDef = {
           ports,
           note: result.routes.length
             ? "These are the routes the recording actually visited, most recent first. The screen the user described is almost always here — they were looking at it while describing it."
-            : `No navigations recorded since the last claim. ${noEventsHint(ports as PortsReport)}`,
+            : `No navigations recorded since the last claim. ${noEventsHint(ports as PortsReport, cfg.launch)}`,
         };
       }
       case "find": {
